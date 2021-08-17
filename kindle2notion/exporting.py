@@ -88,10 +88,10 @@ def _add_book_to_notion(
 
     title_exists = False
     if notion_collection_view_rows:
-        for row in notion_collection_view_rows:
-            if title == row.title and author == row.author:
+        for c_row in notion_collection_view_rows:
+            if title == c_row.title and author == c_row.author:
                 title_exists = True
-                row = row
+                row = c_row
 
                 if row.highlights is None:
                     row.highlights = 0  # to initialize number of highlights as 0
@@ -127,7 +127,7 @@ def _add_book_to_notion(
     for all_blocks in parent_page.children:
         all_blocks.remove()
     parent_page.children.add_new(TextBlock, title=aggregated_text)
-    diff_count = highlight_count - row.highlights
+    diff_count = highlight_count - (row.highlights or 0)
     row.highlights = highlight_count
     row.last_highlighted = NotionDate(parse(last_date))
     row.last_synced = NotionDate(datetime.now())
