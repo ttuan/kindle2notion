@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Dict, List, Tuple
-
 from dateparser import parse
-from notion.block import TextBlock
-from notion.client import NotionClient
-from notion.collection import NotionDate
+from dateutil.tz import tzlocal
+
+from notion_client import Client
 from requests import get
 
 NO_COVER_IMG = "https://via.placeholder.com/150x200?text=No%20Cover"
@@ -12,7 +11,6 @@ ITALIC = "*"
 BOLD = "**"
 
 # TODO: Refactor this module
-
 
 def export_to_notion(
     books: Dict,
@@ -24,6 +22,8 @@ def export_to_notion(
     print("Initiating transfer...\n")
 
     for title in books:
+        print("Checking book: " + title)
+
         book = books[title]
         author = book["author"]
         highlights = book["highlights"]
@@ -45,7 +45,6 @@ def export_to_notion(
         if message != "None to add":
             print("✓", message)
 
-
 def _prepare_aggregated_text_for_one_book(
     highlights: List, enable_highlight_date: bool
 ) -> Tuple[str, str]:
@@ -61,11 +60,11 @@ def _prepare_aggregated_text_for_one_book(
 
         aggregated_text += text + "\n("
         if page != "":
-            aggregated_text += ITALIC + "Page: " + page + ITALIC + "  "
+            aggregated_text += "Page: " + page + "  "
         if location != "":
-            aggregated_text += ITALIC + "Location: " + location + ITALIC + "  "
+            aggregated_text += "Location: " + location + "  "
         if enable_highlight_date and (date != ""):
-            aggregated_text += ITALIC + "Date Added: " + date + ITALIC
+            aggregated_text += "Date Added: " + date
 
         aggregated_text = aggregated_text.strip() + ")\n\n"
     last_date = date
@@ -82,77 +81,70 @@ def _add_book_to_notion(
     notion_table_id: str,
     enable_book_cover: bool,
 ) -> str:
-    notion_client = NotionClient(token_v2=notion_token)
-    notion_collection_view = notion_client.get_collection_view(notion_table_id)
-    notion_collection_view_rows = notion_collection_view.collection.get_rows()
+    notion_client = Client(auth=notion_token)
+    notion_books_database = notion_client.databases.retrieve(notion_table_id)
+    notion_books = notion_client.databases.query(notion_books_database['id']).get('results')
 
     title_exists = False
-    if notion_collection_view_rows:
-        for c_row in notion_collection_view_rows:
-            if title == c_row.title and author == c_row.author:
+    if notion_books:
+        for c_row in notion_books:
+            book_info = c_row.get('properties')
+            if title == book_info['Title']['title'][0]['plain_text']:
                 title_exists = True
                 row = c_row
 
-                if row.highlights is None:
-                    row.highlights = 0  # to initialize number of highlights as 0
-                elif row.highlights == highlight_count:  # if no change in highlights
+                if row['properties']['Highlights']['number'] is None:
+                    row['properties']['Highlights']['number'] = 0
+                elif row['properties']['Highlights']['number'] == highlight_count:
                     return "None to add"
+
 
     title_and_author = title + " (" + str(author) + ")"
     print(title_and_author)
     print("-" * len(title_and_author))
 
     if not title_exists:
-        row = notion_collection_view.collection.add_row()
-        row.title = title
-        row.author = author
-        row.highlights = 0
+        new_page = {
+            "Title": {"title": [{"text": {"content": title}}]},
+            "Author": {
+                "type": "rich_text",
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {"content": author},
+                    }
+                ],
+            },
+            "Highlights": {"type": "number", "number": 0},
+        }
+        row = notion_client.pages.create(parent={"database_id": notion_table_id}, properties=new_page)
 
-        if enable_book_cover:
-            if row.cover is None:
-                result = _get_book_cover_uri(row.title, row.author)
-            if result is not None:
-                row.cover = result
-                print("✓ Added book cover")
-            else:
-                row.cover = NO_COVER_IMG
-                print(
-                    "× Book cover couldn't be found. "
-                    "Please replace the placeholder image with the original book cover manually."
-                )
 
-    parent_page = notion_client.get_block(row.id)
+    parent_page = notion_client.pages.retrieve(row['id'])
 
-    # For existing books with new highlights to add
-    for all_blocks in parent_page.children:
-        all_blocks.remove()
-    parent_page.children.add_new(TextBlock, title=aggregated_text)
-    diff_count = highlight_count - (row.highlights or 0)
-    row.highlights = highlight_count
-    row.last_highlighted = NotionDate(parse(last_date))
-    row.last_synced = NotionDate(datetime.now())
+    for all_blocks in notion_client.blocks.children.list(parent_page['id'])['results']:
+        notion_client.blocks.delete(all_blocks['id'])
+
+    # Split aggregated_text into paragraphs
+    chunk_size = 1500
+    chunks = [{'type': 'text', 'text': {'content': aggregated_text[i:i+chunk_size]}} for i in range(0, len(aggregated_text), chunk_size)]
+
+    new_block = {
+        'object': 'block',
+        'type': 'paragraph',
+        'paragraph': {
+            'text': chunks,
+        }
+    }
+    notion_client.blocks.children.append(block_id=parent_page['id'], children=[new_block])
+
+    diff_count = highlight_count - (row['properties']['Highlights']['number'] or 0)
+    updated_info = {
+        "Highlights": {"type": "number", "number": highlight_count},
+        "Last Highlighted": {"type": "date", "date": {'start': parse(last_date).replace(tzinfo=tzlocal()).isoformat()}},
+        "Last Synced": {"type": "date", "date": {'start': datetime.now(tzlocal()).isoformat()}},
+    }
+    notion_client.pages.update(page_id=row['id'], properties=updated_info)
+
     message = str(diff_count) + " notes / highlights added successfully\n"
     return message
-
-
-def _get_book_cover_uri(title: str, author: str):
-    req_uri = "https://www.googleapis.com/books/v1/volumes?q="
-
-    if title is None:
-        return
-    req_uri += "intitle:" + title
-
-    if author is not None:
-        req_uri += "+inauthor:" + author
-
-    response = get(req_uri).json().get("items", [])
-    if len(response) > 0:
-        for x in response:
-            if x.get("volumeInfo", {}).get("imageLinks", {}).get("thumbnail"):
-                return (
-                    x.get("volumeInfo", {})
-                    .get("imageLinks", {})
-                    .get("thumbnail")
-                    .replace("http://", "https://")
-                )
-    return

@@ -1,10 +1,10 @@
 import click
-from notion.client import NotionClient
 
 from kindle2notion.exporting import export_to_notion
 from kindle2notion.parsing import parse_raw_clippings_text
 from kindle2notion.reading import read_raw_clippings
 
+from notion_client import Client
 
 @click.command()
 @click.argument("notion_token")
@@ -28,10 +28,10 @@ def main(
     enable_book_cover,
 ):
 
-    notion_client = NotionClient(token_v2=notion_token)
-    notion_collection_view = notion_client.get_collection_view(notion_table_id)
+    notion_client = Client(auth=notion_token)
+    notion_collection_view = notion_client.databases.retrieve(notion_table_id)
 
-    if len(notion_collection_view.parent.views) > 0:
+    if len(notion_collection_view) > 0:
         print("Notion page is found. Analyzing clippings file...")
         all_clippings = read_raw_clippings(clippings_file_path)
         books = parse_raw_clippings_text(all_clippings)
