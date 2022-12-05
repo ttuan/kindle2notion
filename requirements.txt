@@ -4,4 +4,4 @@ DateTime>=4.3
 python-decouple>=3.3
 requests>=2.25.0
 pathlib
-notion-client
+git+https://github.com/ramnes/notion-sdk-py@main

@@ -4,6 +4,7 @@ from dateparser import parse
 from dateutil.tz import tzlocal
 
 from notion_client import Client
+from notion_client.helpers import collect_paginated_api
 from requests import get
 
 NO_COVER_IMG = "https://via.placeholder.com/150x200?text=No%20Cover"
@@ -83,7 +84,9 @@ def _add_book_to_notion(
 ) -> str:
     notion_client = Client(auth=notion_token)
     notion_books_database = notion_client.databases.retrieve(notion_table_id)
-    notion_books = notion_client.databases.query(notion_books_database['id']).get('results')
+    notion_books = collect_paginated_api(
+        notion_client.databases.query, database_id=notion_books_database['id']
+    )
 
     title_exists = False
     if notion_books:
@@ -133,7 +136,7 @@ def _add_book_to_notion(
         'object': 'block',
         'type': 'paragraph',
         'paragraph': {
-            'text': chunks,
+            'rich_text': chunks,
         }
     }
     notion_client.blocks.children.append(block_id=parent_page['id'], children=[new_block])
