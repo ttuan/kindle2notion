@@ -129,7 +129,7 @@ def _add_book_to_notion(
         notion_client.blocks.delete(all_blocks['id'])
 
     # Split aggregated_text into paragraphs
-    chunk_size = 1500
+    chunk_size = 2000
     chunks = [{'type': 'text', 'text': {'content': aggregated_text[i:i+chunk_size]}} for i in range(0, len(aggregated_text), chunk_size)]
 
     new_block = {
