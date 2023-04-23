@@ -5,13 +5,13 @@ from dateutil.tz import tzlocal
 
 from notion_client import Client
 from notion_client.helpers import collect_paginated_api
-from requests import get
 
 NO_COVER_IMG = "https://via.placeholder.com/150x200?text=No%20Cover"
 ITALIC = "*"
 BOLD = "**"
 
 # TODO: Refactor this module
+
 
 def export_to_notion(
     books: Dict,
@@ -29,10 +29,10 @@ def export_to_notion(
         author = book["author"]
         highlights = book["highlights"]
         highlight_count = len(highlights)
-        (
-            aggregated_text_from_highlights,
-            last_date,
-        ) = _prepare_aggregated_text_for_one_book(highlights, enable_highlight_date)
+        (aggregated_text_from_highlights,
+         last_date,
+         ) = _prepare_aggregated_text_for_one_book(highlights,
+                                                   enable_highlight_date)
         message = _add_book_to_notion(
             title,
             author,
@@ -46,6 +46,7 @@ def export_to_notion(
         if message != "None to add":
             print("✓", message)
 
+
 def _prepare_aggregated_text_for_one_book(
     highlights: List, enable_highlight_date: bool
 ) -> Tuple[str, str]:
@@ -56,7 +57,7 @@ def _prepare_aggregated_text_for_one_book(
         location = highlight[2]
         date = highlight[3]
         isNote = highlight[4]
-        if isNote == True:
+        if isNote is True:
             aggregated_text += BOLD + "Note: " + BOLD
 
         aggregated_text += text + "\n("
@@ -98,9 +99,9 @@ def _add_book_to_notion(
 
                 if row['properties']['Highlights']['number'] is None:
                     row['properties']['Highlights']['number'] = 0
-                elif row['properties']['Highlights']['number'] == highlight_count:
+                elif (row['properties']['Highlights']['number'] ==
+                      highlight_count):
                     return "None to add"
-
 
     title_and_author = title + " (" + str(author) + ")"
     print(title_and_author)
@@ -120,17 +121,22 @@ def _add_book_to_notion(
             },
             "Highlights": {"type": "number", "number": 0},
         }
-        row = notion_client.pages.create(parent={"database_id": notion_table_id}, properties=new_page)
-
+        row = notion_client.pages.create(
+            parent={"database_id": notion_table_id},
+            properties=new_page)
 
     parent_page = notion_client.pages.retrieve(row['id'])
 
-    for all_blocks in notion_client.blocks.children.list(parent_page['id'])['results']:
+    for all_blocks in notion_client.blocks.children.list(parent_page['id'])[
+                                                         'results']:
         notion_client.blocks.delete(all_blocks['id'])
 
     # Split aggregated_text into paragraphs
     chunk_size = 2000
-    chunks = [{'type': 'text', 'text': {'content': aggregated_text[i:i+chunk_size]}} for i in range(0, len(aggregated_text), chunk_size)]
+    chunks = [{'type': 'text',
+               'text': {'content': aggregated_text[i: i + chunk_size]}}
+              for i in range(0, len(aggregated_text),
+                             chunk_size)]
 
     new_block = {
         'object': 'block',
@@ -139,14 +145,21 @@ def _add_book_to_notion(
             'rich_text': chunks,
         }
     }
-    notion_client.blocks.children.append(block_id=parent_page['id'], children=[new_block])
+    notion_client.blocks.children.append(
+        block_id=parent_page['id'],
+        children=[new_block])
 
-    diff_count = highlight_count - (row['properties']['Highlights']['number'] or 0)
+    diff_count = highlight_count - (row['properties']
+                                    ['Highlights']['number'] or 0)
     updated_info = {
-        "Highlights": {"type": "number", "number": highlight_count},
-        "Last Highlighted": {"type": "date", "date": {'start': parse(last_date).replace(tzinfo=tzlocal()).isoformat()}},
-        "Last Synced": {"type": "date", "date": {'start': datetime.now(tzlocal()).isoformat()}},
-    }
+        "Highlights": {
+            "type": "number", "number": highlight_count}, "Last Highlighted": {
+            "type": "date", "date": {
+                'start': parse(last_date).replace(
+                    tzinfo=tzlocal()).isoformat()}}, "Last Synced": {
+                        "type": "date", "date": {
+                            'start': datetime.now(
+                                tzlocal()).isoformat()}}, }
     notion_client.pages.update(page_id=row['id'], properties=updated_info)
 
     message = str(diff_count) + " notes / highlights added successfully\n"
