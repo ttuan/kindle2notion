@@ -102,7 +102,9 @@ def parse_raw_clippings_text(raw_clippings_text: str) -> Dict:
         else:
             passed_clippings_count += 1
 
-    print(f"× Passed {passed_clippings_count} bookmarks or unsupported clippings.\n")
+    print(
+        f"× Passed {passed_clippings_count} bookmarks or unsupported clippings.\n"
+    )
     return books
 
 
