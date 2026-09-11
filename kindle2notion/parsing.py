@@ -102,7 +102,9 @@ def parse_raw_clippings_text(raw_clippings_text: str) -> Dict:
         else:
             passed_clippings_count += 1
 
-    print(f"× Passed {passed_clippings_count} bookmarks or unsupported clippings.\n")
+    print(
+        f"× Passed {passed_clippings_count} bookmarks or unsupported clippings.\n"
+    )
     return books
 
 
@@ -172,7 +174,7 @@ def _parse_raw_author_and_title(raw_clipping_list: List) -> Tuple[str, str]:
             "No author found. You can manually add the Author details in the Notion database."
         )
 
-    title = raw_clipping_list[0].replace(author, "").strip().replace(" ()", "")
+    title = raw_clipping_list[0].replace(author, "").strip().replace(" ()", "").strip(" - ")
 
     return author, title
 
