@@ -16,6 +16,12 @@ HIGHLIGHT_DATE_FORMAT = "%A, %d %B %Y %I:%M:%S %p"
 # Notion rejects a rich_text element longer than this.
 RICH_TEXT_CHUNK_SIZE = 2000
 
+# What a sync did to one book. _add_book_to_notion reports one of these so the
+# caller owns all the printing and can tally the run.
+NEW = "new"
+UPDATED = "updated"
+UNCHANGED = "unchanged"
+
 
 def export_to_notion(
     books: Dict,
@@ -31,9 +37,10 @@ def export_to_notion(
     # O(books x rows) requests, which dominates the runtime on a real library.
     rows_by_title = _fetch_rows_by_title(notion_client, data_source_id)
 
-    for title in books:
-        print("Checking book: " + title)
+    tally = {NEW: 0, UPDATED: 0, UNCHANGED: 0}
+    added = {NEW: 0, UPDATED: 0}
 
+    for title in books:
         book = books[title]
         author = book["author"]
         highlights = book["highlights"]
@@ -43,7 +50,7 @@ def export_to_notion(
             last_date,
         ) = _prepare_aggregated_text_for_one_book(highlights,
                                                   enable_highlight_date)
-        message = _add_book_to_notion(
+        status, diff_count, previous_count = _add_book_to_notion(
             notion_client,
             rows_by_title,
             title,
@@ -53,8 +60,31 @@ def export_to_notion(
             last_date,
             notion_table_id,
         )
-        if message != "None to add":
-            print("✓", message)
+
+        tally[status] += 1
+        if status == UNCHANGED:
+            # Staying silent here is the point: a real library is mostly
+            # unchanged, and printing every title buries the few that moved.
+            continue
+
+        added[status] += diff_count
+        label = title + " (" + str(author) + ")"
+        if status == NEW:
+            print(f"+ NEW      {label} — {highlight_count} highlights")
+        else:
+            print(f"↑ UPDATED  {label} — +{diff_count} highlights "
+                  f"({previous_count} → {highlight_count})")
+
+    _print_summary(tally, added)
+
+
+def _print_summary(tally: Dict, added: Dict) -> None:
+    total = tally[NEW] + tally[UPDATED] + tally[UNCHANGED]
+    print("\n" + "─" * 38)
+    print(f"Summary: {total} books checked")
+    print(f"  {'New:':<12}{tally[NEW]}  (+{added[NEW]} highlights)")
+    print(f"  {'Updated:':<12}{tally[UPDATED]}  (+{added[UPDATED]} highlights)")
+    print(f"  {'Unchanged:':<12}{tally[UNCHANGED]}")
 
 
 def _resolve_data_source_id(notion_client: Client, notion_table_id: str) -> str:
@@ -124,7 +154,12 @@ def _add_book_to_notion(
     aggregated_text: str,
     last_date: str,
     notion_table_id: str,
-) -> str:
+) -> Tuple[str, int, int]:
+    """Sync one book and report (status, highlights added, previous count).
+
+    Printing is the caller's job so that it can both format the line and tally
+    the run.
+    """
     row = rows_by_title.get(title)
     current_highlight_count = 0
 
@@ -132,11 +167,9 @@ def _add_book_to_notion(
         current_highlight_count = (row["properties"].get("Highlights",
                                                          {}).get("number") or 0)
         if current_highlight_count == highlight_count:
-            return "None to add"
+            return UNCHANGED, 0, current_highlight_count
 
-    title_and_author = title + " (" + str(author) + ")"
-    print(title_and_author)
-    print("-" * len(title_and_author))
+    status = NEW if row is None else UPDATED
 
     if row is None:
         new_page = {
@@ -214,5 +247,4 @@ def _add_book_to_notion(
 
     notion_client.pages.update(page_id=row['id'], properties=updated_info)
 
-    message = str(diff_count) + " notes / highlights added successfully\n"
-    return message
+    return status, diff_count, current_highlight_count

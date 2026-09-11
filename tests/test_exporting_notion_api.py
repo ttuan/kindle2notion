@@ -151,3 +151,69 @@ def test_export_to_notion_does_not_set_last_highlighted_when_there_is_no_date():
     properties = client.pages.update.call_args.kwargs["properties"]
     assert "Last Highlighted" not in properties
     assert "Last Synced" in properties
+
+
+# --- Sync log output -------------------------------------------------------
+# These assert on stdout because the log is the feature: the operator needs to
+# see which books changed without re-reading the whole database by hand.
+
+
+def test_export_to_notion_logs_a_new_book_as_new_with_its_highlight_count(capsys):
+    # Given a database with no matching row
+    client = _build_client(existing_rows=[])
+
+    # When
+    _export(_book("Relativity", author="Albert Einstein", count=3), client)
+
+    # Then
+    out = capsys.readouterr().out
+    assert "NEW" in out
+    assert "Relativity (Albert Einstein)" in out
+    assert "3 highlights" in out
+    assert "UPDATED" not in out
+
+
+def test_export_to_notion_logs_a_grown_book_as_updated_with_the_count_delta(capsys):
+    # Given an existing row with 35 highlights
+    client = _build_client(existing_rows=[_row("Relativity", 35)])
+
+    # When the clippings file now holds 42
+    _export(_book("Relativity", count=42), client)
+
+    # Then the log names the delta and both endpoints
+    out = capsys.readouterr().out
+    assert "UPDATED" in out
+    assert "+7 highlights" in out
+    assert "35 → 42" in out
+    assert "NEW" not in out
+
+
+def test_export_to_notion_logs_nothing_per_book_for_an_unchanged_book(capsys):
+    # Given a book whose count matches
+    client = _build_client(existing_rows=[_row("Relativity", 2)])
+
+    # When
+    _export(_book("Relativity", count=2), client)
+
+    # Then the title never appears above the summary
+    out = capsys.readouterr().out
+    assert "Relativity" not in out.split("Summary:")[0]
+
+
+def test_export_to_notion_prints_a_summary_counting_each_status(capsys):
+    # Given one unchanged book, one grown book, and one book that is not in Notion
+    client = _build_client(existing_rows=[_row("Unchanged", 2), _row("Grown", 1)])
+    books = {}
+    books.update(_book("Unchanged", count=2))
+    books.update(_book("Grown", count=4))
+    books.update(_book("Brand New", count=5))
+
+    # When
+    _export(books, client)
+
+    # Then
+    out = capsys.readouterr().out
+    assert "Summary: 3 books checked" in out
+    assert "New:        1  (+5 highlights)" in out
+    assert "Updated:    1  (+3 highlights)" in out
+    assert "Unchanged:  1" in out
