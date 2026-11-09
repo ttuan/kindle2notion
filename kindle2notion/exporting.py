@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+import click
 from dateparser import parse
 from dateutil.tz import tzlocal
 
@@ -29,7 +30,8 @@ def export_to_notion(
     notion_token: str,
     notion_table_id: str,
 ) -> None:
-    print("Initiating transfer...\n")
+    click.echo(click.style("🚀 Initiating transfer…", fg="cyan", bold=True))
+    click.echo()
 
     notion_client = Client(auth=notion_token)
     data_source_id = _resolve_data_source_id(notion_client, notion_table_id)
@@ -68,23 +70,35 @@ def export_to_notion(
             continue
 
         added[status] += diff_count
-        label = title + " (" + str(author) + ")"
+        label = click.style(title, bold=True) + click.style(f" ({author})", dim=True)
         if status == NEW:
-            print(f"+ NEW      {label} — {highlight_count} highlights")
+            click.echo(click.style("✚ NEW     ", fg="green", bold=True) + " " + label
+                       + click.style(f" — {highlight_count} highlights", fg="green"))
         else:
-            print(f"↑ UPDATED  {label} — +{diff_count} highlights "
-                  f"({previous_count} → {highlight_count})")
+            click.echo(click.style("↑ UPDATED ", fg="yellow", bold=True) + " " + label
+                       + click.style(f" — +{diff_count} highlights", fg="yellow")
+                       + click.style(f" ({previous_count} → {highlight_count})", dim=True))
 
     _print_summary(tally, added)
 
 
 def _print_summary(tally: Dict, added: Dict) -> None:
     total = tally[NEW] + tally[UPDATED] + tally[UNCHANGED]
-    print("\n" + "─" * 38)
-    print(f"Summary: {total} books checked")
-    print(f"  {'New:':<12}{tally[NEW]}  (+{added[NEW]} highlights)")
-    print(f"  {'Updated:':<12}{tally[UPDATED]}  (+{added[UPDATED]} highlights)")
-    print(f"  {'Unchanged:':<12}{tally[UNCHANGED]}")
+    click.echo()
+    click.echo(click.style("─" * 38, dim=True))
+    click.echo(click.style(f"📊 Summary: {total} books checked", bold=True))
+    click.echo(_summary_line("✚", "New:", tally[NEW], added[NEW], "green"))
+    click.echo(_summary_line("↑", "Updated:", tally[UPDATED], added[UPDATED], "yellow"))
+    click.echo(click.style(f"  ·  {'Unchanged:':<12}{tally[UNCHANGED]}", dim=True))
+
+
+def _summary_line(icon: str, name: str, count: int, highlights: int, color: str) -> str:
+    # Grey out rows that did nothing so the eye lands on the ones that moved.
+    if count == 0:
+        return click.style(f"  {icon}  {name:<12}{count}  (+{highlights} highlights)", dim=True)
+    return (click.style(f"  {icon}  {name:<12}", fg=color, bold=True)
+            + click.style(str(count), bold=True)
+            + click.style(f"  (+{highlights} highlights)", fg=color))
 
 
 def _resolve_data_source_id(notion_client: Client, notion_table_id: str) -> str:

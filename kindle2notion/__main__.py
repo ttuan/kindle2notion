@@ -48,7 +48,8 @@ def main(
     notion_collection_view = notion_client.databases.retrieve(notion_table_id)
 
     if len(notion_collection_view) > 0:
-        print("Notion page is found. Analyzing clippings file...")
+        click.echo(click.style("🔗 Notion database found.", fg="green") + "  "
+                   + click.style("Analyzing clippings file…", dim=True))
         all_clippings = read_raw_clippings(clippings_file_path)
         books = parse_raw_clippings_text(all_clippings)
         export_to_notion(
@@ -57,7 +58,9 @@ def main(
             notion_token,
             notion_table_id,
         )
-        print("Transfer complete... Exiting script...")
+        click.echo()
+        click.echo(click.style("🎉 Transfer complete.", fg="green", bold=True)
+                   + click.style("  Exiting script…", dim=True))
 
 
 if __name__ == "__main__":
